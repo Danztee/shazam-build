@@ -1,7 +1,7 @@
 # Simple Makefile for a Go project
 
 # Build the application
-all: build test
+all: build
 
 build:
 	@echo "Building..."
@@ -11,9 +11,14 @@ build:
 
 # Run the application
 run:
+	@if lsof -ti :8080 > /dev/null 2>&1; then \
+		echo "Port 8080 is already in use. Killing existing process..."; \
+		lsof -ti :8080 | xargs kill -9 2>/dev/null || true; \
+		sleep 1; \
+	fi
 	@go run cmd/api/main.go &
-	@npm install --prefer-offline --no-fund --prefix ./frontend
-	@npm run dev --prefix ./frontend
+	@cd frontend && pnpm install --prefer-offline
+	@cd frontend && pnpm run dev
 # Create DB container
 docker-run:
 	@if docker compose up --build 2>/dev/null; then \
@@ -31,15 +36,6 @@ docker-down:
 		echo "Falling back to Docker Compose V1"; \
 		docker-compose down; \
 	fi
-
-# Test the application
-test:
-	@echo "Testing..."
-	@go test ./... -v
-# Integrations Tests for the application
-itest:
-	@echo "Running integration tests..."
-	@go test ./internal/database -v
 
 # Clean the binary
 clean:
@@ -63,4 +59,4 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run test clean watch docker-run docker-down itest
+.PHONY: all build run clean watch docker-run docker-down

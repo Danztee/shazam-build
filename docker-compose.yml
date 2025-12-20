@@ -9,7 +9,7 @@ services:
     ports:
       - "${BLUEPRINT_DB_PORT}:5432"
     volumes:
-      - psql_volume_bp:/var/lib/postgresql/data
+      - psql_volume_bp:/var/lib/postgresql
 
 volumes:
   psql_volume_bp:
