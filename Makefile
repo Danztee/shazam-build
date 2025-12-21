@@ -5,9 +5,7 @@ all: build
 
 build:
 	@echo "Building..."
-	
-	
-	@go build -o main cmd/api/main.go
+	@go build -o main ./cmd
 
 # Run the application
 run:
@@ -16,7 +14,7 @@ run:
 		lsof -ti :8080 | xargs kill -9 2>/dev/null || true; \
 		sleep 1; \
 	fi
-	@go run cmd/api/main.go &
+	@go run ./cmd &
 	@cd frontend && pnpm install --prefer-offline
 	@cd frontend && pnpm run dev
 # Create DB container
@@ -62,18 +60,28 @@ watch:
 # Database migrations
 migrate-up:
 	@set -a && [ -f .env ] && source .env; set +a && \
-	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" up
+	goose -dir migrations postgres "$$DATABASE_URL" up
 
 migrate-down:
 	@set -a && [ -f .env ] && source .env; set +a && \
-	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" down
+	goose -dir migrations postgres "$$DATABASE_URL" down
 
 migrate-status:
 	@set -a && [ -f .env ] && source .env; set +a && \
-	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" status
+	goose -dir migrations postgres "$$DATABASE_URL" status
 
 migrate-create:
 	@read -p "Enter migration name: " name; \
 	goose -dir migrations create $$name sql
 
-.PHONY: all build run clean watch docker-run docker-down migrate-up migrate-down migrate-status migrate-create
+# Generate sqlc code
+sqlc-generate:
+	@if command -v sqlc > /dev/null; then \
+		sqlc generate; \
+		echo "sqlc code generated successfully"; \
+	else \
+		echo "sqlc is not installed. Install it with: go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest"; \
+		exit 1; \
+	fi
+
+.PHONY: all build run clean watch docker-run docker-down migrate-up migrate-down migrate-status migrate-create sqlc-generate

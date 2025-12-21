@@ -1,0 +1,15 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "queries"
+    schema: "migrations"
+    gen:
+      go:
+        package: "shazam"
+        out: "internal/database/queries"
+        sql_package: "pgx/v5"
+        emit_interface: true
+        emit_json_tags: true
+        emit_prepared_queries: false
+        emit_exact_table_names: false
+        emit_empty_slices: true
