@@ -3,8 +3,8 @@ package audio
 import "sort"
 
 const (
-	minFreqBin       = 26 // Ignore frequencies below ~250Hz (at 44.1kHz/4096)
-	maxPeaksPerFrame = 3  // Only keep strongest peaks per time frame
+	minFreqBin       = 26 // ignore frequencies below this guy ~250Hz (at 44.1kHz/4096)
+	maxPeaksPerFrame = 3  // only keep strongest peaks per time frame
 )
 
 func FindPeaks(spec *Spectrogram, threshold float32, neighborhoodSize int) []Peak {

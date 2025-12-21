@@ -6,49 +6,51 @@ import (
 )
 
 func FFT(samples []float64) []complex128 {
-	if len(samples) == 1 {
-		return []complex128{complex(samples[0], 0)}
-	}
+	n := len(samples)
 
+	// Ensure power of 2
 	nextPow2 := 1
-	for nextPow2 < len(samples) {
+	for nextPow2 < n {
 		nextPow2 <<= 1
 	}
 
-	padded := make([]float64, nextPow2)
-	copy(padded, samples)
+	// Prepare mapping: complex(float, 0)
+	x := make([]complex128, nextPow2)
+	for i, s := range samples {
+		x[i] = complex(s, 0)
+	}
 
-	return fftRecursive(padded)
-}
-
-func fftRecursive(x []float64) []complex128 {
-	n := len(x)
-	if n <= 1 {
-		result := make([]complex128, n)
-		for i := range x {
-			result[i] = complex(x[i], 0)
+	// Bit-reversal permutation
+	j := 0
+	for i := 0; i < nextPow2-1; i++ {
+		if i < j {
+			x[i], x[j] = x[j], x[i]
 		}
-		return result
+		k := nextPow2 >> 1
+		for k <= j {
+			j -= k
+			k >>= 1
+		}
+		j += k
 	}
 
-	even := make([]float64, n/2)
-	odd := make([]float64, n/2)
-	for i := 0; i < n/2; i++ {
-		even[i] = x[i*2]
-		odd[i] = x[i*2+1]
+	// Butterfly updates
+	for ip := 1; ip < nextPow2; ip <<= 1 { // ip is the size of the sub-problem
+		ang := -math.Pi / float64(ip)
+		wStep := cmplx.Exp(complex(0, ang))
+
+		for i := 0; i < nextPow2; i += 2 * ip {
+			w := complex(1, 0)
+			for k := 0; k < ip; k++ {
+				t := w * x[i+k+ip]
+				x[i+k+ip] = x[i+k] - t
+				x[i+k] = x[i+k] + t
+				w = w * wStep
+			}
+		}
 	}
 
-	evenFFT := fftRecursive(even)
-	oddFFT := fftRecursive(odd)
-
-	result := make([]complex128, n)
-	for k := 0; k < n/2; k++ {
-		t := cmplx.Exp(complex(0, -2*math.Pi*float64(k)/float64(n))) * oddFFT[k]
-		result[k] = evenFFT[k] + t
-		result[k+n/2] = evenFFT[k] - t
-	}
-
-	return result
+	return x
 }
 
 func MagnitudeSpectrum(fft []complex128) []float64 {

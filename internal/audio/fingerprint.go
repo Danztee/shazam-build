@@ -25,7 +25,7 @@ func GenerateFingerprints(peaks []Peak, spec *Spectrogram, timeRange int) []Fing
 
 			fingerprints = append(fingerprints, Fingerprint{
 				Hash:         hash,
-				AnchorTimeMs: anchorTimeMs,
+				TimeOffsetMs: anchorTimeMs,
 			})
 			pairCount++
 		}

@@ -24,11 +24,11 @@ type Peak struct {
 
 type Fingerprint struct {
 	Hash         int64
-	AnchorTimeMs int
+	TimeOffsetMs int
 }
 
 type IndexedFingerprint struct {
 	Hash         int64
 	SongID       int
-	AnchorTimeMs int
+	TimeOffsetMs int
 }

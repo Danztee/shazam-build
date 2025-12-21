@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/Danztee/shazam-build/internal/audio"
 	repo "github.com/Danztee/shazam-build/internal/database/queries"
@@ -99,29 +100,28 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, downloa
 		return repo.Song{}, errors.New("album has no tracks")
 	}
 
+	// Store created songs to pass to goroutine
+	createdSongs := make([]repo.Song, len(tracks))
 	var lastSong repo.Song
-	for _, track := range tracks {
+
+	for i, track := range tracks {
 		song, _, err := s.findOrCreateSong(ctx, track)
 		if err != nil {
 			return repo.Song{}, fmt.Errorf("failed to find or create song %s: %w", track.Name, err)
 		}
+		createdSongs[i] = song
 		lastSong = song
 	}
 
 	if download && s.downloadSvc != nil {
 		go func() {
-			for _, track := range tracks {
-				song, isNew, err := s.findOrCreateSong(context.Background(), track)
-				if err != nil {
-					slog.Warn("failed to find or create song", "error", err, "track", track.Name)
-					continue
-				}
+			for i, track := range tracks {
+				song := createdSongs[i]
 
-				if !isNew {
-					slog.Info("song already exists, skipping download and fingerprint processing", "song_id", song.ID, "title", song.Title)
-					continue
-				}
-
+				// Proceed to download and process since we are in the "add album" context
+				// The songs were either just created or retrieved, and the user requested download.
+				// We assume if the user requests download for an album, they want all tracks processed
+				// regardless of whether they existed before this request.
 				wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), track, "")
 				if err != nil {
 					slog.Warn("download failed", "error", err, "track", track.Name)
@@ -187,6 +187,13 @@ func (s *svc) findOrCreateSong(ctx context.Context, track *spotify.Track) (repo.
 }
 
 func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavPath string) error {
+	defer func() {
+		os.Remove(wavPath)
+		mp3Path := strings.TrimSuffix(wavPath, ".wav") + ".mp3"
+		os.Remove(mp3Path)
+		slog.Info("cleaned up audio files", "wav_path", wavPath)
+	}()
+
 	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
 		return fmt.Errorf("WAV file not found: %s", wavPath)
 	}
@@ -212,7 +219,7 @@ func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavP
 	for _, fp := range fingerprints {
 		key := fingerprintKey{
 			Hash:         fp.Hash,
-			TimeOffsetMs: int32(fp.AnchorTimeMs),
+			TimeOffsetMs: int32(fp.TimeOffsetMs),
 			SongID:       songID,
 		}
 		if !uniqueFingerprints[key] {
@@ -236,7 +243,7 @@ func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavP
 			return []any{
 				deduplicated[i].Hash,
 				songID,
-				int32(deduplicated[i].AnchorTimeMs),
+				int32(deduplicated[i].TimeOffsetMs),
 			}, nil
 		}),
 	)
