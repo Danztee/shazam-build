@@ -36,3 +36,21 @@ func (h *handler) AddSong(w http.ResponseWriter, r *http.Request) {
 	json.WriteJSON(w, http.StatusOK, map[string]string{"message": "song added successfully"})
 
 }
+
+func (h *handler) MatchSong(w http.ResponseWriter, r *http.Request) {
+	var payload matchSongPayload
+	if err := json.ReadJSON(r, &payload); err != nil {
+		log.Println("error reading match payload", err)
+		json.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	song, err := h.service.MatchSong(r.Context(), payload.Data)
+	if err != nil {
+		log.Println("error matching song", err)
+		json.WriteError(w, http.StatusNotFound, err.Error())
+		return
+	}
+
+	json.WriteJSON(w, http.StatusOK, song)
+}

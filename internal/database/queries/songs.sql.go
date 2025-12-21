@@ -13,11 +13,11 @@ import (
 
 const createSong = `-- name: CreateSong :one
 INSERT INTO songs (
-    title, artists, album, duration_ms
+    title, artists, album, duration_ms, image_url
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3, $4, $5
 )
-RETURNING id, title, artists, album, duration_ms, created_at
+RETURNING id, title, artists, album, image_url, duration_ms, created_at
 `
 
 type CreateSongParams struct {
@@ -25,6 +25,7 @@ type CreateSongParams struct {
 	Artists    []byte      `json:"artists"`
 	Album      pgtype.Text `json:"album"`
 	DurationMs pgtype.Int4 `json:"duration_ms"`
+	ImageUrl   pgtype.Text `json:"image_url"`
 }
 
 func (q *Queries) CreateSong(ctx context.Context, arg CreateSongParams) (Song, error) {
@@ -33,6 +34,7 @@ func (q *Queries) CreateSong(ctx context.Context, arg CreateSongParams) (Song, e
 		arg.Artists,
 		arg.Album,
 		arg.DurationMs,
+		arg.ImageUrl,
 	)
 	var i Song
 	err := row.Scan(
@@ -40,6 +42,7 @@ func (q *Queries) CreateSong(ctx context.Context, arg CreateSongParams) (Song, e
 		&i.Title,
 		&i.Artists,
 		&i.Album,
+		&i.ImageUrl,
 		&i.DurationMs,
 		&i.CreatedAt,
 	)
@@ -57,7 +60,7 @@ func (q *Queries) DeleteSong(ctx context.Context, id int32) error {
 }
 
 const getSong = `-- name: GetSong :one
-SELECT id, title, artists, album, duration_ms, created_at FROM songs
+SELECT id, title, artists, album, image_url, duration_ms, created_at FROM songs
 WHERE id = $1 LIMIT 1
 `
 
@@ -69,6 +72,7 @@ func (q *Queries) GetSong(ctx context.Context, id int32) (Song, error) {
 		&i.Title,
 		&i.Artists,
 		&i.Album,
+		&i.ImageUrl,
 		&i.DurationMs,
 		&i.CreatedAt,
 	)
@@ -76,7 +80,7 @@ func (q *Queries) GetSong(ctx context.Context, id int32) (Song, error) {
 }
 
 const getSongByTitleAndArtists = `-- name: GetSongByTitleAndArtists :one
-SELECT id, title, artists, album, duration_ms, created_at FROM songs
+SELECT id, title, artists, album, image_url, duration_ms, created_at FROM songs
 WHERE title = $1 AND artists = $2::jsonb
 LIMIT 1
 `
@@ -94,6 +98,7 @@ func (q *Queries) GetSongByTitleAndArtists(ctx context.Context, arg GetSongByTit
 		&i.Title,
 		&i.Artists,
 		&i.Album,
+		&i.ImageUrl,
 		&i.DurationMs,
 		&i.CreatedAt,
 	)
@@ -101,7 +106,7 @@ func (q *Queries) GetSongByTitleAndArtists(ctx context.Context, arg GetSongByTit
 }
 
 const listSongs = `-- name: ListSongs :many
-SELECT id, title, artists, album, duration_ms, created_at FROM songs
+SELECT id, title, artists, album, image_url, duration_ms, created_at FROM songs
 ORDER BY created_at DESC
 `
 
@@ -119,6 +124,7 @@ func (q *Queries) ListSongs(ctx context.Context) ([]Song, error) {
 			&i.Title,
 			&i.Artists,
 			&i.Album,
+			&i.ImageUrl,
 			&i.DurationMs,
 			&i.CreatedAt,
 		); err != nil {
@@ -134,9 +140,9 @@ func (q *Queries) ListSongs(ctx context.Context) ([]Song, error) {
 
 const updateSong = `-- name: UpdateSong :one
 UPDATE songs
-SET title = $2, artists = $3, album = $4, duration_ms = $5
+SET title = $2, artists = $3, album = $4, duration_ms = $5, image_url = $6
 WHERE id = $1
-RETURNING id, title, artists, album, duration_ms, created_at
+RETURNING id, title, artists, album, image_url, duration_ms, created_at
 `
 
 type UpdateSongParams struct {
@@ -145,6 +151,7 @@ type UpdateSongParams struct {
 	Artists    []byte      `json:"artists"`
 	Album      pgtype.Text `json:"album"`
 	DurationMs pgtype.Int4 `json:"duration_ms"`
+	ImageUrl   pgtype.Text `json:"image_url"`
 }
 
 func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, error) {
@@ -154,6 +161,7 @@ func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, e
 		arg.Artists,
 		arg.Album,
 		arg.DurationMs,
+		arg.ImageUrl,
 	)
 	var i Song
 	err := row.Scan(
@@ -161,6 +169,7 @@ func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, e
 		&i.Title,
 		&i.Artists,
 		&i.Album,
+		&i.ImageUrl,
 		&i.DurationMs,
 		&i.CreatedAt,
 	)

@@ -19,6 +19,7 @@ type Song struct {
 	Title      string           `json:"title"`
 	Artists    []byte           `json:"artists"`
 	Album      pgtype.Text      `json:"album"`
+	ImageUrl   pgtype.Text      `json:"image_url"`
 	DurationMs pgtype.Int4      `json:"duration_ms"`
 	CreatedAt  pgtype.Timestamp `json:"created_at"`
 }

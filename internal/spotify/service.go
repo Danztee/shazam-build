@@ -25,6 +25,7 @@ type Service interface {
 	GetAccessToken() (string, error)
 	GetTrack(ctx context.Context, token, trackID string) (*Track, error)
 	GetAlbumTracks(ctx context.Context, token, albumID string) ([]*Track, *Album, error)
+	GetArtist(ctx context.Context, token, artistID string) (*Artist, error)
 }
 
 type svc struct{}
@@ -86,6 +87,14 @@ func (s *svc) GetTrack(ctx context.Context, token, trackID string) (*Track, erro
 		return nil, err
 	}
 	return &track, nil
+}
+
+func (s *svc) GetArtist(ctx context.Context, token, artistID string) (*Artist, error) {
+	var artist Artist
+	if err := s.get(ctx, token, fmt.Sprintf("https://api.spotify.com/v1/artists/%s", artistID), &artist); err != nil {
+		return nil, err
+	}
+	return &artist, nil
 }
 
 func (s *svc) GetAlbumTracks(ctx context.Context, token, albumID string) ([]*Track, *Album, error) {

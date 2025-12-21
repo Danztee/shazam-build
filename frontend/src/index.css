@@ -1,8 +1,44 @@
-@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,100..900;1,100..900&display=swap");
 @import "tailwindcss";
 
 :root {
-  font-family: "Outfit", sans-serif;
+  font-family: "Urbanist", sans-serif;
+}
+
+@theme {
+  --animate-in-out: in-out 3.5s ease-in-out infinite;
+
+  @keyframes in-out {
+    0%,
+    100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.1);
+    }
+  }
+
+  --animate-sound: sound 0.5s ease-in-out infinite alternate;
+  @keyframes sound {
+    0% {
+      height: 20%;
+    }
+    100% {
+      height: 100%;
+    }
+  }
+
+  --animate-ripple: ripple 2.4s linear infinite;
+  @keyframes ripple {
+    0% {
+      transform: scale(0.8);
+      opacity: 0.5;
+    }
+    100% {
+      transform: scale(4);
+      opacity: 0;
+    }
+  }
 }
 
 body {

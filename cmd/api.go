@@ -37,6 +37,7 @@ func (app *application) mount() http.Handler {
 	songsService := songs.NewService(repo.New(app.db), app.db, spotifyService, downloadService, audioService)
 	songsHandler := songs.NewHandler(songsService)
 	r.Post("/songs", songsHandler.AddSong)
+	r.Post("/songs/match", songsHandler.MatchSong)
 
 	return r
 

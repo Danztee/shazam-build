@@ -7,6 +7,7 @@ CREATE TABLE songs (
     title TEXT NOT NULL,
     artists JSONB NOT NULL DEFAULT '[]'::jsonb,
     album TEXT,
+    image_url TEXT,
     duration_ms INT,
     created_at TIMESTAMP DEFAULT NOW()
 );

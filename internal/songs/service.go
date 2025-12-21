@@ -2,11 +2,14 @@ package songs
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
+	"sort"
 	"strings"
 
 	"github.com/Danztee/shazam-build/internal/audio"
@@ -20,6 +23,7 @@ import (
 
 type Service interface {
 	AddSong(ctx context.Context, song createSongPayload) (repo.Song, error)
+	MatchSong(ctx context.Context, base64Audio string) (repo.Song, error)
 }
 
 type svc struct {
@@ -41,7 +45,6 @@ func NewService(repo repo.Querier, db *pgx.Conn, spotifyClient spotify.Service, 
 }
 
 func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song, error) {
-
 	urlInfo, err := s.spotifyClient.ExtractURLInfo(payload.SpotifyUrl)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("invalid spotify URL: %w", err)
@@ -90,6 +93,126 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 	return song, nil
 }
 
+func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, error) {
+	// 1. Decode Base64 WebM
+	audioBytes, err := base64.StdEncoding.DecodeString(base64Audio)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("invalid base64 audio: %w", err)
+	}
+
+	// 2. Write to temp file
+	tmpDir := os.TempDir()
+	webmFile, err := os.CreateTemp(tmpDir, "upload-*.webm")
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(webmFile.Name())
+
+	if _, err := webmFile.Write(audioBytes); err != nil {
+		return repo.Song{}, fmt.Errorf("failed to write audio to temp file: %w", err)
+	}
+	webmFile.Close() // Close so ffmpeg can read it
+
+	// 3. Convert to WAV using ffmpeg
+	wavPath := strings.TrimSuffix(webmFile.Name(), ".webm") + ".wav"
+	// ffmpeg -i input.webm -ac 1 -ar 44100 -f wav output.wav
+	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", webmFile.Name(), "-ac", "1", "-ar", "44100", "-f", "wav", wavPath)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		slog.Error("ffmpeg conversion failed", "output", string(out), "error", err)
+		return repo.Song{}, fmt.Errorf("audio conversion failed: %w", err)
+	}
+	defer os.Remove(wavPath)
+
+	// 4. Generate Fingerprints
+	fingerprints, err := s.audioSvc.ProcessAudio(ctx, wavPath)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("fingerprinting failed: %w", err)
+	}
+
+	if len(fingerprints) == 0 {
+		return repo.Song{}, errors.New("no fingerprints generated from audio")
+	}
+
+	// 5. Query DB (Diagonal Matching)
+	// Map query hashes to their time offsets
+	queryHashes := make(map[int64][]int)
+	inputHashes := make([]int64, 0, len(fingerprints))
+	for _, fp := range fingerprints {
+		queryHashes[fp.Hash] = append(queryHashes[fp.Hash], fp.TimeOffsetMs)
+		inputHashes = append(inputHashes, fp.Hash)
+	}
+
+	// Fetch all matching hashes from DB
+	dbMatches, err := s.repo.GetFingerprintsByHashes(ctx, inputHashes)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("database query failed: %w", err)
+	}
+
+	// Count matches per song with time coherency (Sort & Scan)
+	songDeltas := make(map[int32][]int)
+
+	for _, match := range dbMatches {
+		queryTimes, ok := queryHashes[match.Hash]
+		if !ok {
+			continue
+		}
+
+		for _, qTime := range queryTimes {
+			// Delta = DB Time - Query Time
+			// If match is correct, Delta should be approx constant
+			delta := int(match.TimeOffsetMs) - qTime
+			songDeltas[match.SongID] = append(songDeltas[match.SongID], delta)
+		}
+	}
+
+	// Find best match using Histogram Peak
+	var bestSongID int32
+	var bestScore int
+	const matchToleranceMs = 200 // Window width for the peak
+
+	for songID, deltas := range songDeltas {
+		if len(deltas) == 0 {
+			continue
+		}
+
+		// Sort deltas to scan for dense clusters
+		sort.Ints(deltas)
+
+		// Scan for max density (Sliding Window)
+		maxCount := 0
+		left := 0
+		for right := 0; right < len(deltas); right++ {
+			// Maintain window size <= matchToleranceMs
+			for deltas[right]-deltas[left] > matchToleranceMs {
+				left++
+			}
+			// Current window count
+			count := right - left + 1
+			if count > maxCount {
+				maxCount = count
+			}
+		}
+
+		if maxCount > bestScore {
+			bestScore = maxCount
+			bestSongID = songID
+		}
+	}
+
+	slog.Info("match completed", "best_score", bestScore, "song_id", bestSongID)
+
+	if bestScore < 20 {
+		return repo.Song{}, fmt.Errorf("no song match found (best score: %d)", bestScore)
+	}
+
+	song, err := s.repo.GetSong(ctx, bestSongID)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("failed to retrieve matched song details: %w", err)
+	}
+
+	return song, nil
+}
+
 func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, download bool) (repo.Song, error) {
 	tracks, _, err := s.spotifyClient.GetAlbumTracks(ctx, token, albumID)
 	if err != nil {
@@ -100,7 +223,6 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, downloa
 		return repo.Song{}, errors.New("album has no tracks")
 	}
 
-	// Store created songs to pass to goroutine
 	createdSongs := make([]repo.Song, len(tracks))
 	var lastSong repo.Song
 
@@ -118,10 +240,6 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, downloa
 			for i, track := range tracks {
 				song := createdSongs[i]
 
-				// Proceed to download and process since we are in the "add album" context
-				// The songs were either just created or retrieved, and the user requested download.
-				// We assume if the user requests download for an album, they want all tracks processed
-				// regardless of whether they existed before this request.
 				wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), track, "")
 				if err != nil {
 					slog.Warn("download failed", "error", err, "track", track.Name)
@@ -170,11 +288,17 @@ func (s *svc) findOrCreateSong(ctx context.Context, track *spotify.Track) (repo.
 		durationMs = pgtype.Int4{Int32: int32(track.DurationMs), Valid: true}
 	}
 
+	imageUrl := pgtype.Text{Valid: false}
+	if len(track.Album.Images) > 0 {
+		imageUrl = pgtype.Text{String: track.Album.Images[0].URL, Valid: true}
+	}
+
 	createParams := repo.CreateSongParams{
 		Title:      track.Name,
 		Artists:    artistsJSON,
 		Album:      albumName,
 		DurationMs: durationMs,
+		ImageUrl:   imageUrl,
 	}
 
 	song, err := s.repo.CreateSong(ctx, createParams)
