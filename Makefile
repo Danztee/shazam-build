@@ -59,4 +59,21 @@ watch:
             fi; \
         fi
 
-.PHONY: all build run clean watch docker-run docker-down
+# Database migrations
+migrate-up:
+	@set -a && [ -f .env ] && source .env; set +a && \
+	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" up
+
+migrate-down:
+	@set -a && [ -f .env ] && source .env; set +a && \
+	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" down
+
+migrate-status:
+	@set -a && [ -f .env ] && source .env; set +a && \
+	goose -dir migrations postgres "postgres://$$BLUEPRINT_DB_USERNAME:$$BLUEPRINT_DB_PASSWORD@$$BLUEPRINT_DB_HOST:$$BLUEPRINT_DB_PORT/$$BLUEPRINT_DB_DATABASE?sslmode=disable&search_path=$$BLUEPRINT_DB_SCHEMA" status
+
+migrate-create:
+	@read -p "Enter migration name: " name; \
+	goose -dir migrations create $$name sql
+
+.PHONY: all build run clean watch docker-run docker-down migrate-up migrate-down migrate-status migrate-create

@@ -49,3 +49,5 @@ Clean up binary from the last build:
 ```bash
 make clean
 ```
+
+<!-- migrate create -ext sql -dir internal/database/migrations -seq create_songs_table -->
