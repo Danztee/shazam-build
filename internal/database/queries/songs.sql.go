@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/jackc/pgx/v5/pgtype"
 )
@@ -21,11 +22,11 @@ RETURNING id, title, artists, album, image_url, duration_ms, created_at
 `
 
 type CreateSongParams struct {
-	Title      string      `json:"title"`
-	Artists    []byte      `json:"artists"`
-	Album      pgtype.Text `json:"album"`
-	DurationMs pgtype.Int4 `json:"duration_ms"`
-	ImageUrl   pgtype.Text `json:"image_url"`
+	Title      string          `json:"title"`
+	Artists    json.RawMessage `json:"artists"`
+	Album      pgtype.Text     `json:"album"`
+	DurationMs pgtype.Int4     `json:"duration_ms"`
+	ImageUrl   pgtype.Text     `json:"image_url"`
 }
 
 func (q *Queries) CreateSong(ctx context.Context, arg CreateSongParams) (Song, error) {
@@ -86,8 +87,8 @@ LIMIT 1
 `
 
 type GetSongByTitleAndArtistsParams struct {
-	Title   string `json:"title"`
-	Column2 []byte `json:"column_2"`
+	Title   string          `json:"title"`
+	Column2 json.RawMessage `json:"column_2"`
 }
 
 func (q *Queries) GetSongByTitleAndArtists(ctx context.Context, arg GetSongByTitleAndArtistsParams) (Song, error) {
@@ -146,12 +147,12 @@ RETURNING id, title, artists, album, image_url, duration_ms, created_at
 `
 
 type UpdateSongParams struct {
-	ID         int32       `json:"id"`
-	Title      string      `json:"title"`
-	Artists    []byte      `json:"artists"`
-	Album      pgtype.Text `json:"album"`
-	DurationMs pgtype.Int4 `json:"duration_ms"`
-	ImageUrl   pgtype.Text `json:"image_url"`
+	ID         int32           `json:"id"`
+	Title      string          `json:"title"`
+	Artists    json.RawMessage `json:"artists"`
+	Album      pgtype.Text     `json:"album"`
+	DurationMs pgtype.Int4     `json:"duration_ms"`
+	ImageUrl   pgtype.Text     `json:"image_url"`
 }
 
 func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, error) {

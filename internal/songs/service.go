@@ -21,6 +21,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+var ErrNoMatch = errors.New("no song match found")
+
 type Service interface {
 	AddSong(ctx context.Context, song createSongPayload) (repo.Song, error)
 	MatchSong(ctx context.Context, base64Audio string) (repo.Song, error)
@@ -57,6 +59,10 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 
 	if urlInfo.Type == "album" {
 		return s.addAlbumTracks(ctx, token, urlInfo.ID, payload.Download)
+	}
+
+	if urlInfo.Type == "playlist" {
+		return s.addPlaylistTracks(ctx, token, urlInfo.ID, payload.Download)
 	}
 
 	track, err := s.spotifyClient.GetTrack(ctx, token, urlInfo.ID)
@@ -202,7 +208,7 @@ func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, err
 	slog.Info("match completed", "best_score", bestScore, "song_id", bestSongID)
 
 	if bestScore < 20 {
-		return repo.Song{}, fmt.Errorf("no song match found (best score: %d)", bestScore)
+		return repo.Song{}, fmt.Errorf("best score %d: %w", bestScore, ErrNoMatch)
 	}
 
 	song, err := s.repo.GetSong(ctx, bestSongID)
@@ -236,21 +242,84 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, downloa
 	}
 
 	if download && s.downloadSvc != nil {
+		if download && s.downloadSvc != nil {
+			go func() {
+				// Limit concurrency to 5 to avoid rate limits or excessive resource usage
+				sem := make(chan struct{}, 5)
+
+				for i, track := range tracks {
+					sem <- struct{}{} // Acquire semaphore
+					go func(idx int, t *spotify.Track) {
+						defer func() { <-sem }() // Release semaphore
+
+						song := createdSongs[idx]
+
+						wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), t, "")
+						if err != nil {
+							slog.Warn("download failed", "error", err, "track", t.Name)
+							return
+						}
+
+						if wavPath != "" && s.audioSvc != nil {
+							if err := s.processAndSaveFingerprints(context.Background(), song.ID, wavPath); err != nil {
+								slog.Warn("failed to process fingerprints", "error", err, "track", t.Name)
+							}
+						}
+					}(i, track)
+				}
+			}()
+		}
+	}
+
+	return lastSong, nil
+}
+
+func (s *svc) addPlaylistTracks(ctx context.Context, token, playlistID string, download bool) (repo.Song, error) {
+	tracks, _, err := s.spotifyClient.GetPlaylistTracks(ctx, token, playlistID)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("failed to get playlist tracks: %w", err)
+	}
+
+	if len(tracks) == 0 {
+		return repo.Song{}, errors.New("playlist has no tracks")
+	}
+
+	createdSongs := make([]repo.Song, len(tracks))
+	var lastSong repo.Song
+
+	for i, track := range tracks {
+		song, _, err := s.findOrCreateSong(ctx, track)
+		if err != nil {
+			return repo.Song{}, fmt.Errorf("failed to find or create song %s: %w", track.Name, err)
+		}
+		createdSongs[i] = song
+		lastSong = song
+	}
+
+	if download && s.downloadSvc != nil {
 		go func() {
+			// Limit concurrency to 5
+			sem := make(chan struct{}, 5)
+
 			for i, track := range tracks {
-				song := createdSongs[i]
+				sem <- struct{}{} // Acquire semaphore
+				go func(idx int, t *spotify.Track) {
+					defer func() { <-sem }() // Release semaphore
 
-				wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), track, "")
-				if err != nil {
-					slog.Warn("download failed", "error", err, "track", track.Name)
-					continue
-				}
+					song := createdSongs[idx]
 
-				if wavPath != "" && s.audioSvc != nil {
-					if err := s.processAndSaveFingerprints(context.Background(), song.ID, wavPath); err != nil {
-						slog.Warn("failed to process fingerprints", "error", err, "track", track.Name)
+					wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), t, "")
+					if err != nil {
+						slog.Warn("download failed", "error", err, "track", t.Name)
+						return
 					}
-				}
+
+					if wavPath != "" && s.audioSvc != nil {
+						if err := s.processAndSaveFingerprints(context.Background(), song.ID, wavPath); err != nil {
+							slog.Warn("failed to process fingerprints", "error", err, "track", t.Name)
+						}
+					}
+				}(i, track)
 			}
 		}()
 	}

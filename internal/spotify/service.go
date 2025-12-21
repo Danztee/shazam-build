@@ -25,6 +25,7 @@ type Service interface {
 	GetAccessToken() (string, error)
 	GetTrack(ctx context.Context, token, trackID string) (*Track, error)
 	GetAlbumTracks(ctx context.Context, token, albumID string) ([]*Track, *Album, error)
+	GetPlaylistTracks(ctx context.Context, token, playlistID string) ([]*Track, *Playlist, error)
 	GetArtist(ctx context.Context, token, artistID string) (*Artist, error)
 }
 
@@ -37,7 +38,7 @@ func NewService() Service {
 func (s *svc) ExtractURLInfo(spotifyURL string) (URLInfo, error) {
 	if parsedURL, err := url.Parse(spotifyURL); err == nil && parsedURL.Host == "open.spotify.com" {
 		parts := strings.Split(strings.TrimPrefix(parsedURL.Path, "/"), "/")
-		if len(parts) == 2 && (parts[0] == "track" || parts[0] == "album") {
+		if len(parts) == 2 && (parts[0] == "track" || parts[0] == "album" || parts[0] == "playlist") {
 			return URLInfo{Type: parts[0], ID: parts[1]}, nil
 		}
 	}
@@ -47,6 +48,9 @@ func (s *svc) ExtractURLInfo(spotifyURL string) (URLInfo, error) {
 	}
 	if m := regexp.MustCompile(`album/([a-zA-Z0-9]+)`).FindStringSubmatch(spotifyURL); len(m) > 1 {
 		return URLInfo{Type: "album", ID: m[1]}, nil
+	}
+	if m := regexp.MustCompile(`playlist/([a-zA-Z0-9]+)`).FindStringSubmatch(spotifyURL); len(m) > 1 {
+		return URLInfo{Type: "playlist", ID: m[1]}, nil
 	}
 	return URLInfo{}, errors.New("could not extract track or album ID from URL")
 }
@@ -139,6 +143,51 @@ func (s *svc) GetAlbumTracks(ctx context.Context, token, albumID string) ([]*Tra
 		track.Album.Name = album.Name
 	}
 	return tracks, &Album{Name: album.Name}, nil
+}
+
+func (s *svc) GetPlaylistTracks(ctx context.Context, token, playlistID string) ([]*Track, *Playlist, error) {
+	var playlist struct {
+		Name string `json:"name"`
+	}
+	if err := s.get(ctx, token, fmt.Sprintf("https://api.spotify.com/v1/playlists/%s", playlistID), &playlist); err != nil {
+		return nil, nil, err
+	}
+
+	var allTrackIDs []string
+	offset := 0
+	for {
+		var result struct {
+			Items []struct {
+				Track struct {
+					ID string `json:"id"`
+				} `json:"track"`
+			} `json:"items"`
+			Total int `json:"total"`
+		}
+		if err := s.get(ctx, token, fmt.Sprintf("https://api.spotify.com/v1/playlists/%s/tracks?limit=50&offset=%d", playlistID, offset), &result); err != nil {
+			return nil, nil, err
+		}
+		for _, item := range result.Items {
+			if item.Track.ID != "" {
+				allTrackIDs = append(allTrackIDs, item.Track.ID)
+			}
+		}
+		if offset+len(result.Items) >= result.Total {
+			break
+		}
+		offset += 50
+	}
+
+	if len(allTrackIDs) == 0 {
+		return []*Track{}, &Playlist{Name: playlist.Name}, nil
+	}
+
+	tracks, err := s.getTracks(ctx, token, allTrackIDs)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return tracks, &Playlist{Name: playlist.Name}, nil
 }
 
 func (s *svc) getTracks(ctx context.Context, token string, trackIDs []string) ([]*Track, error) {

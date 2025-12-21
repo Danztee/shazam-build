@@ -1,9 +1,15 @@
 import { useState, useRef } from "react";
+import MatchResult, { type Match } from "./MatchResult";
+
 const AudioRecorder = () => {
   const [isRecording, setIsRecording] = useState(false);
-  const [matchResult, setMatchResult] = useState<any>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [matchResult, setMatchResult] = useState<Match[]>([]);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const timeoutRef = useRef<any>(null);
+  const retryCountRef = useRef(0);
 
   const startRecording = async () => {
     try {
@@ -23,6 +29,8 @@ const AudioRecorder = () => {
           const base64 = reader.result?.toString().split(",")[1];
           if (base64) {
             await sendToBackend(base64);
+          } else {
+            handleRetryOrFailure();
           }
         };
         reader.readAsDataURL(blob);
@@ -31,28 +39,52 @@ const AudioRecorder = () => {
 
       mediaRecorderRef.current.start();
       setIsRecording(true);
+      setIsAnalyzing(false);
+
+      timeoutRef.current = setTimeout(() => {
+        stopRecording();
+      }, 3000);
     } catch (error) {
       console.error("Error accessing microphone:", error);
-      alert(
-        "Could not access microphone. Please ensure permissions are granted."
-      );
+      alert("Could not access microphone.");
+      setIsRecording(false);
+      setIsAnalyzing(false);
     }
   };
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    if (
+      mediaRecorderRef.current &&
+      mediaRecorderRef.current.state === "recording"
+    ) {
       mediaRecorderRef.current.stop();
       setIsRecording(false);
-      // Stop all tracks to release the microphone
+      setIsAnalyzing(true);
+
       mediaRecorderRef.current.stream
         .getTracks()
         .forEach((track) => track.stop());
     }
   };
 
+  const handleRetryOrFailure = () => {
+    if (retryCountRef.current < 2) {
+      retryCountRef.current += 1;
+      startRecording();
+    } else {
+      retryCountRef.current = 0;
+      setIsAnalyzing(false);
+      alert("Song not found. Please try again.");
+    }
+  };
+
   const sendToBackend = async (base64Data: string) => {
     try {
-      const response = await fetch("/api/songs/match", {
+      const response = await fetch("/api/v1/songs/match", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -65,22 +97,40 @@ const AudioRecorder = () => {
       }
 
       const result = await response.json();
-      setMatchResult(result);
-      console.log("Match result:", result);
+      const matches = result.records || [];
+
+      if (matches.length > 0) {
+        setMatchResult(matches);
+        retryCountRef.current = 0;
+        setIsAnalyzing(false);
+      } else {
+        handleRetryOrFailure();
+      }
     } catch (error) {
       console.error("Error sending audio to backend:", error);
-      alert("Failed to match audio. Please try again.");
+      handleRetryOrFailure();
     }
   };
 
+  const handleReset = () => {
+    setMatchResult([]);
+    setIsRecording(false);
+    setIsAnalyzing(false);
+    retryCountRef.current = 0;
+  };
+
+  if (matchResult.length > 0) {
+    return <MatchResult match={matchResult[0]} onReset={handleReset} />;
+  }
+
+  const isBusy = isRecording || isAnalyzing;
+
   return (
-    <div className="h-screen overflow-hidden bg-[#0474ff] text-white p-4">
+    <div className="h-screen overflow-hidden bg-[#0474ff] text-white p-4 relative">
       <div className="flex flex-col items-center justify-center h-full gap-8">
         <h3
           className={`text-3xl font-bold transition-all duration-300 ${
-            isRecording
-              ? "opacity-0 translate-y-4"
-              : "opacity-100 translate-y-0"
+            isBusy ? "opacity-0 translate-y-4" : "opacity-100 translate-y-0"
           }`}
         >
           Tap to shazam
@@ -94,10 +144,19 @@ const AudioRecorder = () => {
               <div className="absolute inset-0 rounded-full bg-white/30 animate-ripple [animation-delay:1.6s]" />
             </>
           )}
+          {isAnalyzing && (
+            <div className="absolute inset-0 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+          )}
+
           <button
-            className="cursor-pointer relative z-10 w-30 h-30 rounded-full border-none bg-white flex items-center justify-center animate-in-out shadow-lg"
-            onClick={isRecording ? stopRecording : startRecording}
-            aria-label={isRecording ? "Stop Recording" : "Start Recording"}
+            className={`relative z-10 w-30 h-30 rounded-full border-none bg-white flex items-center justify-center animate-in-out shadow-lg ${
+              isBusy
+                ? "cursor-not-allowed opacity-80"
+                : "cursor-pointer hover:scale-105 transition-transform"
+            }`}
+            onClick={startRecording}
+            disabled={isBusy}
+            aria-label="Start Recording"
           >
             <svg className="w-20 h-20 fill-[#0474ff]" viewBox="0 0 24 24">
               <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
@@ -108,12 +167,10 @@ const AudioRecorder = () => {
 
         <h3
           className={`text-base font-semibold transition-all duration-300 ${
-            isRecording
-              ? "opacity-100 translate-y-0"
-              : "opacity-0 -translate-y-4"
+            isBusy ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-4"
           }`}
         >
-          Listening for music...
+          {isAnalyzing ? "Looking for a match..." : "Listening for music..."}
         </h3>
       </div>
     </div>

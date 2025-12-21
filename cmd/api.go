@@ -36,8 +36,10 @@ func (app *application) mount() http.Handler {
 	audioService := audio.NewService(slog.Default())
 	songsService := songs.NewService(repo.New(app.db), app.db, spotifyService, downloadService, audioService)
 	songsHandler := songs.NewHandler(songsService)
-	r.Post("/songs", songsHandler.AddSong)
-	r.Post("/songs/match", songsHandler.MatchSong)
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Post("/songs", songsHandler.AddSong)
+		r.Post("/songs/match", songsHandler.MatchSong)
+	})
 
 	return r
 

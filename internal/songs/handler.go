@@ -1,6 +1,7 @@
 package songs
 
 import (
+	"errors"
 	"log"
 	"net/http"
 
@@ -47,10 +48,19 @@ func (h *handler) MatchSong(w http.ResponseWriter, r *http.Request) {
 
 	song, err := h.service.MatchSong(r.Context(), payload.Data)
 	if err != nil {
+		if errors.Is(err, ErrNoMatch) {
+			json.WriteJSON(w, http.StatusOK, map[string]interface{}{
+				"records": []interface{}{},
+			})
+			return
+		}
+
 		log.Println("error matching song", err)
 		json.WriteError(w, http.StatusNotFound, err.Error())
 		return
 	}
 
-	json.WriteJSON(w, http.StatusOK, song)
+	json.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"records": []interface{}{song},
+	})
 }

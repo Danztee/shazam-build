@@ -5,6 +5,8 @@
 package db
 
 import (
+	"encoding/json"
+
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -17,7 +19,7 @@ type Fingerprint struct {
 type Song struct {
 	ID         int32            `json:"id"`
 	Title      string           `json:"title"`
-	Artists    []byte           `json:"artists"`
+	Artists    json.RawMessage  `json:"artists"`
 	Album      pgtype.Text      `json:"album"`
 	ImageUrl   pgtype.Text      `json:"image_url"`
 	DurationMs pgtype.Int4      `json:"duration_ms"`

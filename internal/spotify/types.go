@@ -13,6 +13,11 @@ type Artist struct {
 	Images []Image `json:"images"`
 }
 
+type Playlist struct {
+	Name   string  `json:"name"`
+	Images []Image `json:"images"`
+}
+
 type Album struct {
 	Name   string  `json:"name"`
 	Images []Image `json:"images"`
