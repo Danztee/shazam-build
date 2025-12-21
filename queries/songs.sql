@@ -8,15 +8,15 @@ ORDER BY created_at DESC;
 
 -- name: CreateSong :one
 INSERT INTO songs (
-    title, album, duration_seconds
+    title, artists, album, duration_seconds
 ) VALUES (
-    $1, $2, $3
+    $1, $2, $3, $4
 )
 RETURNING *;
 
 -- name: UpdateSong :one
 UPDATE songs
-SET title = $2, album = $3, duration_seconds = $4
+SET title = $2, artists = $3, album = $4, duration_seconds = $5
 WHERE id = $1
 RETURNING *;
 

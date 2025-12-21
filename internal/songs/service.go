@@ -2,6 +2,7 @@ package songs
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -28,30 +29,26 @@ func NewService(repo repo.Querier, spotifyClient spotify.Service) Service {
 }
 
 func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song, error) {
-	// Extract URL type and ID from Spotify URL
+
 	urlInfo, err := s.spotifyClient.ExtractURLInfo(payload.SpotifyUrl)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("invalid spotify URL: %w", err)
 	}
 
-	// Get Spotify access token
 	token, err := s.spotifyClient.GetAccessToken()
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to get access token: %w", err)
 	}
 
-	// Handle album URLs
 	if urlInfo.Type == "album" {
 		return s.addAlbumTracks(ctx, token, urlInfo.ID)
 	}
 
-	// Handle track URLs
 	track, err := s.spotifyClient.GetTrack(ctx, token, urlInfo.ID)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to get track info: %w", err)
 	}
 
-	// Create song in database
 	song, err := s.createSongFromTrack(ctx, track)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
@@ -60,9 +57,7 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 	return song, nil
 }
 
-// addAlbumTracks fetches all tracks from an album and adds them to the database
 func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.Song, error) {
-	// Get album tracks
 	tracks, _, err := s.spotifyClient.GetAlbumTracks(ctx, token, albumID)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to get album tracks: %w", err)
@@ -72,7 +67,6 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.S
 		return repo.Song{}, errors.New("album has no tracks")
 	}
 
-	// Create all songs in database
 	var lastSong repo.Song
 	for _, track := range tracks {
 		song, err := s.createSongFromTrack(ctx, track)
@@ -85,8 +79,17 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.S
 	return lastSong, nil
 }
 
-// createSongFromTrack creates a song in the database from a Spotify track
 func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (repo.Song, error) {
+	artistNames := make([]string, 0, len(track.Artists))
+	for _, artist := range track.Artists {
+		artistNames = append(artistNames, artist.Name)
+	}
+
+	artistsJSON, err := json.Marshal(artistNames)
+	if err != nil {
+		return repo.Song{}, fmt.Errorf("failed to marshal artists: %w", err)
+	}
+
 	albumName := pgtype.Text{Valid: false}
 	if track.Album.Name != "" {
 		albumName = pgtype.Text{String: track.Album.Name, Valid: true}
@@ -99,6 +102,7 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 
 	createParams := repo.CreateSongParams{
 		Title:           track.Name,
+		Artists:         artistsJSON,
 		Album:           albumName,
 		DurationSeconds: durationSeconds,
 	}
@@ -106,21 +110,6 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 	song, err := s.repo.CreateSong(ctx, createParams)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
-	}
-
-	for _, artist := range track.Artists {
-		artistRecord, err := s.repo.CreateOrGetArtist(ctx, artist.Name)
-		if err != nil {
-			return repo.Song{}, fmt.Errorf("failed to create/get artist %s: %w", artist.Name, err)
-		}
-
-		err = s.repo.LinkSongToArtist(ctx, repo.LinkSongToArtistParams{
-			SongID:   song.ID,
-			ArtistID: artistRecord.ID,
-		})
-		if err != nil {
-			return repo.Song{}, fmt.Errorf("failed to link artist %s to song: %w", artist.Name, err)
-		}
 	}
 
 	return song, nil
