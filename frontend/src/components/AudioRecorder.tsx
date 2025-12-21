@@ -72,7 +72,7 @@ const AudioRecorder = () => {
   };
 
   const handleRetryOrFailure = () => {
-    if (retryCountRef.current < 2) {
+    if (retryCountRef.current < 3) {
       retryCountRef.current += 1;
       startRecording();
     } else {

@@ -53,9 +53,6 @@ const MatchResult = ({ match, onReset }: MatchResultProps) => {
             />
           </svg>
         </button>
-        <span className="text-sm font-medium tracking-widest uppercase opacity-80">
-          Song Found
-        </span>
         <div className="w-10" />
       </div>
 

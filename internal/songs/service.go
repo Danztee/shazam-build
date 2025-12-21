@@ -207,7 +207,7 @@ func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, err
 
 	slog.Info("match completed", "best_score", bestScore, "song_id", bestSongID)
 
-	if bestScore < 20 {
+	if bestScore < 50 {
 		return repo.Song{}, fmt.Errorf("best score %d: %w", bestScore, ErrNoMatch)
 	}
 
