@@ -8,6 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Artist struct {
+	ID        int32            `json:"id"`
+	Name      string           `json:"name"`
+	CreatedAt pgtype.Timestamp `json:"created_at"`
+}
+
 type Fingerprint struct {
 	Hash       int64 `json:"hash"`
 	SongID     int32 `json:"song_id"`
@@ -17,8 +23,12 @@ type Fingerprint struct {
 type Song struct {
 	ID              int32            `json:"id"`
 	Title           string           `json:"title"`
-	Artist          string           `json:"artist"`
 	Album           pgtype.Text      `json:"album"`
 	DurationSeconds pgtype.Int4      `json:"duration_seconds"`
 	CreatedAt       pgtype.Timestamp `json:"created_at"`
+}
+
+type SongArtist struct {
+	SongID   int32 `json:"song_id"`
+	ArtistID int32 `json:"artist_id"`
 }

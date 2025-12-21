@@ -8,24 +8,18 @@ ORDER BY created_at DESC;
 
 -- name: CreateSong :one
 INSERT INTO songs (
-    title, artist, album, duration_seconds
+    title, album, duration_seconds
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3
 )
 RETURNING *;
 
 -- name: UpdateSong :one
 UPDATE songs
-SET title = $2, artist = $3, album = $4, duration_seconds = $5
+SET title = $2, album = $3, duration_seconds = $4
 WHERE id = $1
 RETURNING *;
 
 -- name: DeleteSong :exec
 DELETE FROM songs
 WHERE id = $1;
-
--- name: GetSongByTitleAndArtist :one
-SELECT * FROM songs
-WHERE title = $1 AND artist = $2
-LIMIT 1;
-

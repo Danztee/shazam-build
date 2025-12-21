@@ -13,32 +13,25 @@ import (
 
 const createSong = `-- name: CreateSong :one
 INSERT INTO songs (
-    title, artist, album, duration_seconds
+    title, album, duration_seconds
 ) VALUES (
-    $1, $2, $3, $4
+    $1, $2, $3
 )
-RETURNING id, title, artist, album, duration_seconds, created_at
+RETURNING id, title, album, duration_seconds, created_at
 `
 
 type CreateSongParams struct {
 	Title           string      `json:"title"`
-	Artist          string      `json:"artist"`
 	Album           pgtype.Text `json:"album"`
 	DurationSeconds pgtype.Int4 `json:"duration_seconds"`
 }
 
 func (q *Queries) CreateSong(ctx context.Context, arg CreateSongParams) (Song, error) {
-	row := q.db.QueryRow(ctx, createSong,
-		arg.Title,
-		arg.Artist,
-		arg.Album,
-		arg.DurationSeconds,
-	)
+	row := q.db.QueryRow(ctx, createSong, arg.Title, arg.Album, arg.DurationSeconds)
 	var i Song
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Artist,
 		&i.Album,
 		&i.DurationSeconds,
 		&i.CreatedAt,
@@ -57,7 +50,7 @@ func (q *Queries) DeleteSong(ctx context.Context, id int32) error {
 }
 
 const getSong = `-- name: GetSong :one
-SELECT id, title, artist, album, duration_seconds, created_at FROM songs
+SELECT id, title, album, duration_seconds, created_at FROM songs
 WHERE id = $1 LIMIT 1
 `
 
@@ -67,32 +60,6 @@ func (q *Queries) GetSong(ctx context.Context, id int32) (Song, error) {
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Artist,
-		&i.Album,
-		&i.DurationSeconds,
-		&i.CreatedAt,
-	)
-	return i, err
-}
-
-const getSongByTitleAndArtist = `-- name: GetSongByTitleAndArtist :one
-SELECT id, title, artist, album, duration_seconds, created_at FROM songs
-WHERE title = $1 AND artist = $2
-LIMIT 1
-`
-
-type GetSongByTitleAndArtistParams struct {
-	Title  string `json:"title"`
-	Artist string `json:"artist"`
-}
-
-func (q *Queries) GetSongByTitleAndArtist(ctx context.Context, arg GetSongByTitleAndArtistParams) (Song, error) {
-	row := q.db.QueryRow(ctx, getSongByTitleAndArtist, arg.Title, arg.Artist)
-	var i Song
-	err := row.Scan(
-		&i.ID,
-		&i.Title,
-		&i.Artist,
 		&i.Album,
 		&i.DurationSeconds,
 		&i.CreatedAt,
@@ -101,7 +68,7 @@ func (q *Queries) GetSongByTitleAndArtist(ctx context.Context, arg GetSongByTitl
 }
 
 const listSongs = `-- name: ListSongs :many
-SELECT id, title, artist, album, duration_seconds, created_at FROM songs
+SELECT id, title, album, duration_seconds, created_at FROM songs
 ORDER BY created_at DESC
 `
 
@@ -117,7 +84,6 @@ func (q *Queries) ListSongs(ctx context.Context) ([]Song, error) {
 		if err := rows.Scan(
 			&i.ID,
 			&i.Title,
-			&i.Artist,
 			&i.Album,
 			&i.DurationSeconds,
 			&i.CreatedAt,
@@ -134,15 +100,14 @@ func (q *Queries) ListSongs(ctx context.Context) ([]Song, error) {
 
 const updateSong = `-- name: UpdateSong :one
 UPDATE songs
-SET title = $2, artist = $3, album = $4, duration_seconds = $5
+SET title = $2, album = $3, duration_seconds = $4
 WHERE id = $1
-RETURNING id, title, artist, album, duration_seconds, created_at
+RETURNING id, title, album, duration_seconds, created_at
 `
 
 type UpdateSongParams struct {
 	ID              int32       `json:"id"`
 	Title           string      `json:"title"`
-	Artist          string      `json:"artist"`
 	Album           pgtype.Text `json:"album"`
 	DurationSeconds pgtype.Int4 `json:"duration_seconds"`
 }
@@ -151,7 +116,6 @@ func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, e
 	row := q.db.QueryRow(ctx, updateSong,
 		arg.ID,
 		arg.Title,
-		arg.Artist,
 		arg.Album,
 		arg.DurationSeconds,
 	)
@@ -159,7 +123,6 @@ func (q *Queries) UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, e
 	err := row.Scan(
 		&i.ID,
 		&i.Title,
-		&i.Artist,
 		&i.Album,
 		&i.DurationSeconds,
 		&i.CreatedAt,

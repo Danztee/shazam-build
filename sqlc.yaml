@@ -5,7 +5,7 @@ sql:
     schema: "migrations"
     gen:
       go:
-        package: "shazam"
+        package: "db"
         out: "internal/database/queries"
         sql_package: "pgx/v5"
         emit_interface: true

@@ -87,11 +87,6 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.S
 
 // createSongFromTrack creates a song in the database from a Spotify track
 func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (repo.Song, error) {
-	artistName := ""
-	if len(track.Artists) > 0 {
-		artistName = track.Artists[0].Name
-	}
-
 	albumName := pgtype.Text{Valid: false}
 	if track.Album.Name != "" {
 		albumName = pgtype.Text{String: track.Album.Name, Valid: true}
@@ -104,7 +99,6 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 
 	createParams := repo.CreateSongParams{
 		Title:           track.Name,
-		Artist:          artistName,
 		Album:           albumName,
 		DurationSeconds: durationSeconds,
 	}
@@ -112,6 +106,21 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 	song, err := s.repo.CreateSong(ctx, createParams)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
+	}
+
+	for _, artist := range track.Artists {
+		artistRecord, err := s.repo.CreateOrGetArtist(ctx, artist.Name)
+		if err != nil {
+			return repo.Song{}, fmt.Errorf("failed to create/get artist %s: %w", artist.Name, err)
+		}
+
+		err = s.repo.LinkSongToArtist(ctx, repo.LinkSongToArtistParams{
+			SongID:   song.ID,
+			ArtistID: artistRecord.ID,
+		})
+		if err != nil {
+			return repo.Song{}, fmt.Errorf("failed to link artist %s to song: %w", artist.Name, err)
+		}
 	}
 
 	return song, nil
