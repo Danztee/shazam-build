@@ -11,23 +11,23 @@ import (
 
 const createFingerprint = `-- name: CreateFingerprint :one
 INSERT INTO fingerprints (
-    hash, song_id, time_offset
+    hash, song_id, time_offset_ms
 ) VALUES (
     $1, $2, $3
 )
-RETURNING hash, song_id, time_offset
+RETURNING hash, song_id, time_offset_ms
 `
 
 type CreateFingerprintParams struct {
-	Hash       int64 `json:"hash"`
-	SongID     int32 `json:"song_id"`
-	TimeOffset int32 `json:"time_offset"`
+	Hash         int64 `json:"hash"`
+	SongID       int32 `json:"song_id"`
+	TimeOffsetMs int32 `json:"time_offset_ms"`
 }
 
 func (q *Queries) CreateFingerprint(ctx context.Context, arg CreateFingerprintParams) (Fingerprint, error) {
-	row := q.db.QueryRow(ctx, createFingerprint, arg.Hash, arg.SongID, arg.TimeOffset)
+	row := q.db.QueryRow(ctx, createFingerprint, arg.Hash, arg.SongID, arg.TimeOffsetMs)
 	var i Fingerprint
-	err := row.Scan(&i.Hash, &i.SongID, &i.TimeOffset)
+	err := row.Scan(&i.Hash, &i.SongID, &i.TimeOffsetMs)
 	return i, err
 }
 
@@ -42,7 +42,7 @@ func (q *Queries) DeleteFingerprintsBySongID(ctx context.Context, songID int32) 
 }
 
 const getFingerprintsByHash = `-- name: GetFingerprintsByHash :many
-SELECT hash, song_id, time_offset FROM fingerprints
+SELECT hash, song_id, time_offset_ms FROM fingerprints
 WHERE hash = $1
 `
 
@@ -55,7 +55,7 @@ func (q *Queries) GetFingerprintsByHash(ctx context.Context, hash int64) ([]Fing
 	items := []Fingerprint{}
 	for rows.Next() {
 		var i Fingerprint
-		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffset); err != nil {
+		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffsetMs); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -67,7 +67,7 @@ func (q *Queries) GetFingerprintsByHash(ctx context.Context, hash int64) ([]Fing
 }
 
 const getFingerprintsByHashes = `-- name: GetFingerprintsByHashes :many
-SELECT hash, song_id, time_offset FROM fingerprints
+SELECT hash, song_id, time_offset_ms FROM fingerprints
 WHERE hash = ANY($1::bigint[])
 `
 
@@ -80,7 +80,7 @@ func (q *Queries) GetFingerprintsByHashes(ctx context.Context, dollar_1 []int64)
 	items := []Fingerprint{}
 	for rows.Next() {
 		var i Fingerprint
-		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffset); err != nil {
+		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffsetMs); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -92,9 +92,9 @@ func (q *Queries) GetFingerprintsByHashes(ctx context.Context, dollar_1 []int64)
 }
 
 const getFingerprintsBySongID = `-- name: GetFingerprintsBySongID :many
-SELECT hash, song_id, time_offset FROM fingerprints
+SELECT hash, song_id, time_offset_ms FROM fingerprints
 WHERE song_id = $1
-ORDER BY time_offset ASC
+ORDER BY time_offset_ms ASC
 `
 
 func (q *Queries) GetFingerprintsBySongID(ctx context.Context, songID int32) ([]Fingerprint, error) {
@@ -106,7 +106,7 @@ func (q *Queries) GetFingerprintsBySongID(ctx context.Context, songID int32) ([]
 	items := []Fingerprint{}
 	for rows.Next() {
 		var i Fingerprint
-		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffset); err != nil {
+		if err := rows.Scan(&i.Hash, &i.SongID, &i.TimeOffsetMs); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

@@ -5,11 +5,11 @@ WHERE hash = $1;
 -- name: GetFingerprintsBySongID :many
 SELECT * FROM fingerprints
 WHERE song_id = $1
-ORDER BY time_offset ASC;
+ORDER BY time_offset_ms ASC;
 
 -- name: CreateFingerprint :one
 INSERT INTO fingerprints (
-    hash, song_id, time_offset
+    hash, song_id, time_offset_ms
 ) VALUES (
     $1, $2, $3
 )

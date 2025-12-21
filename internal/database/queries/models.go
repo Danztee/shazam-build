@@ -9,16 +9,16 @@ import (
 )
 
 type Fingerprint struct {
-	Hash       int64 `json:"hash"`
-	SongID     int32 `json:"song_id"`
-	TimeOffset int32 `json:"time_offset"`
+	Hash         int64 `json:"hash"`
+	SongID       int32 `json:"song_id"`
+	TimeOffsetMs int32 `json:"time_offset_ms"`
 }
 
 type Song struct {
-	ID              int32            `json:"id"`
-	Title           string           `json:"title"`
-	Artists         []byte           `json:"artists"`
-	Album           pgtype.Text      `json:"album"`
-	DurationSeconds pgtype.Int4      `json:"duration_seconds"`
-	CreatedAt       pgtype.Timestamp `json:"created_at"`
+	ID         int32            `json:"id"`
+	Title      string           `json:"title"`
+	Artists    []byte           `json:"artists"`
+	Album      pgtype.Text      `json:"album"`
+	DurationMs pgtype.Int4      `json:"duration_ms"`
+	CreatedAt  pgtype.Timestamp `json:"created_at"`
 }

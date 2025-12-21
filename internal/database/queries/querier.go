@@ -17,6 +17,7 @@ type Querier interface {
 	GetFingerprintsByHashes(ctx context.Context, dollar_1 []int64) ([]Fingerprint, error)
 	GetFingerprintsBySongID(ctx context.Context, songID int32) ([]Fingerprint, error)
 	GetSong(ctx context.Context, id int32) (Song, error)
+	GetSongByTitleAndArtists(ctx context.Context, arg GetSongByTitleAndArtistsParams) (Song, error)
 	ListSongs(ctx context.Context) ([]Song, error)
 	UpdateSong(ctx context.Context, arg UpdateSongParams) (Song, error)
 }

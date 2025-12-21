@@ -6,11 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
+	"github.com/Danztee/shazam-build/internal/audio"
 	repo "github.com/Danztee/shazam-build/internal/database/queries"
 	"github.com/Danztee/shazam-build/internal/download"
 	"github.com/Danztee/shazam-build/internal/spotify"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
@@ -20,15 +23,19 @@ type Service interface {
 
 type svc struct {
 	repo          repo.Querier
+	db            *pgx.Conn
 	spotifyClient spotify.Service
 	downloadSvc   download.Service
+	audioSvc      audio.Service
 }
 
-func NewService(repo repo.Querier, spotifyClient spotify.Service, downloadSvc download.Service) Service {
+func NewService(repo repo.Querier, db *pgx.Conn, spotifyClient spotify.Service, downloadSvc download.Service, audioSvc audio.Service) Service {
 	return &svc{
 		repo:          repo,
+		db:            db,
 		spotifyClient: spotifyClient,
 		downloadSvc:   downloadSvc,
+		audioSvc:      audioSvc,
 	}
 }
 
@@ -45,7 +52,7 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 	}
 
 	if urlInfo.Type == "album" {
-		return s.addAlbumTracks(ctx, token, urlInfo.ID, payload.Download, payload.SavePath)
+		return s.addAlbumTracks(ctx, token, urlInfo.ID, payload.Download)
 	}
 
 	track, err := s.spotifyClient.GetTrack(ctx, token, urlInfo.ID)
@@ -53,23 +60,36 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 		return repo.Song{}, fmt.Errorf("failed to get track info: %w", err)
 	}
 
-	song, err := s.createSongFromTrack(ctx, track)
+	song, isNew, err := s.findOrCreateSong(ctx, track)
 	if err != nil {
-		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
+		return repo.Song{}, fmt.Errorf("failed to find or create song: %w", err)
 	}
 
-	// Download track if requested
+	if !isNew {
+		slog.Info("song already exists, skipping download and fingerprint processing", "song_id", song.ID, "title", song.Title)
+		return song, nil
+	}
+
 	if payload.Download && s.downloadSvc != nil {
-		if err := s.downloadSvc.DownloadTrack(ctx, track, payload.SavePath); err != nil {
-			slog.Warn("failed to download track", "error", err, "track", track.Name)
-			// Don't fail the whole operation if download fails
-		}
+		go func() {
+			wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), track, "")
+			if err != nil {
+				slog.Warn("download failed", "error", err, "track", track.Name)
+				return
+			}
+
+			if wavPath != "" && s.audioSvc != nil {
+				if err := s.processAndSaveFingerprints(context.Background(), song.ID, wavPath); err != nil {
+					slog.Warn("failed to process fingerprints", "error", err, "track", track.Name)
+				}
+			}
+		}()
 	}
 
 	return song, nil
 }
 
-func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, download bool, savePath string) (repo.Song, error) {
+func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, download bool) (repo.Song, error) {
 	tracks, _, err := s.spotifyClient.GetAlbumTracks(ctx, token, albumID)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to get album tracks: %w", err)
@@ -81,25 +101,46 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, downloa
 
 	var lastSong repo.Song
 	for _, track := range tracks {
-		song, err := s.createSongFromTrack(ctx, track)
+		song, _, err := s.findOrCreateSong(ctx, track)
 		if err != nil {
-			return repo.Song{}, fmt.Errorf("failed to create song %s: %w", track.Name, err)
+			return repo.Song{}, fmt.Errorf("failed to find or create song %s: %w", track.Name, err)
 		}
 		lastSong = song
 	}
 
-	// Download tracks if requested
 	if download && s.downloadSvc != nil {
-		if _, err := s.downloadSvc.DownloadTracks(ctx, tracks, savePath); err != nil {
-			slog.Warn("failed to download some album tracks", "error", err)
-			// Don't fail the whole operation if download fails
-		}
+		go func() {
+			for _, track := range tracks {
+				song, isNew, err := s.findOrCreateSong(context.Background(), track)
+				if err != nil {
+					slog.Warn("failed to find or create song", "error", err, "track", track.Name)
+					continue
+				}
+
+				if !isNew {
+					slog.Info("song already exists, skipping download and fingerprint processing", "song_id", song.ID, "title", song.Title)
+					continue
+				}
+
+				wavPath, err := s.downloadSvc.DownloadTrack(context.Background(), track, "")
+				if err != nil {
+					slog.Warn("download failed", "error", err, "track", track.Name)
+					continue
+				}
+
+				if wavPath != "" && s.audioSvc != nil {
+					if err := s.processAndSaveFingerprints(context.Background(), song.ID, wavPath); err != nil {
+						slog.Warn("failed to process fingerprints", "error", err, "track", track.Name)
+					}
+				}
+			}
+		}()
 	}
 
 	return lastSong, nil
 }
 
-func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (repo.Song, error) {
+func (s *svc) findOrCreateSong(ctx context.Context, track *spotify.Track) (repo.Song, bool, error) {
 	artistNames := make([]string, 0, len(track.Artists))
 	for _, artist := range track.Artists {
 		artistNames = append(artistNames, artist.Name)
@@ -107,7 +148,16 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 
 	artistsJSON, err := json.Marshal(artistNames)
 	if err != nil {
-		return repo.Song{}, fmt.Errorf("failed to marshal artists: %w", err)
+		return repo.Song{}, false, fmt.Errorf("failed to marshal artists: %w", err)
+	}
+
+	existingSong, err := s.repo.GetSongByTitleAndArtists(ctx, repo.GetSongByTitleAndArtistsParams{
+		Title:   track.Name,
+		Column2: artistsJSON,
+	})
+	if err == nil {
+		slog.Info("song already exists in database", "song_id", existingSong.ID, "title", existingSong.Title)
+		return existingSong, false, nil
 	}
 
 	albumName := pgtype.Text{Valid: false}
@@ -115,22 +165,60 @@ func (s *svc) createSongFromTrack(ctx context.Context, track *spotify.Track) (re
 		albumName = pgtype.Text{String: track.Album.Name, Valid: true}
 	}
 
-	durationSeconds := pgtype.Int4{Valid: false}
+	durationMs := pgtype.Int4{Valid: false}
 	if track.DurationMs > 0 {
-		durationSeconds = pgtype.Int4{Int32: int32(track.DurationMs / 1000), Valid: true}
+		durationMs = pgtype.Int4{Int32: int32(track.DurationMs), Valid: true}
 	}
 
 	createParams := repo.CreateSongParams{
-		Title:           track.Name,
-		Artists:         artistsJSON,
-		Album:           albumName,
-		DurationSeconds: durationSeconds,
+		Title:      track.Name,
+		Artists:    artistsJSON,
+		Album:      albumName,
+		DurationMs: durationMs,
 	}
 
 	song, err := s.repo.CreateSong(ctx, createParams)
 	if err != nil {
-		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
+		return repo.Song{}, false, fmt.Errorf("failed to create song: %w", err)
 	}
 
-	return song, nil
+	slog.Info("created new song", "song_id", song.ID, "title", song.Title)
+	return song, true, nil
+}
+
+func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavPath string) error {
+	if _, err := os.Stat(wavPath); os.IsNotExist(err) {
+		return fmt.Errorf("WAV file not found: %s", wavPath)
+	}
+
+	fingerprints, err := s.audioSvc.ProcessAudio(ctx, wavPath)
+	if err != nil {
+		return fmt.Errorf("failed to process audio: %w", err)
+	}
+
+	if len(fingerprints) == 0 {
+		slog.Warn("no fingerprints generated", "song_id", songID)
+		return nil
+	}
+
+	slog.Info("saving fingerprints", "song_id", songID, "count", len(fingerprints))
+
+	rowsCopied, err := s.db.CopyFrom(
+		ctx,
+		pgx.Identifier{"fingerprints"},
+		[]string{"hash", "song_id", "time_offset_ms"},
+		pgx.CopyFromSlice(len(fingerprints), func(i int) ([]any, error) {
+			return []any{
+				fingerprints[i].Hash,
+				songID,
+				int32(fingerprints[i].AnchorTimeMs),
+			}, nil
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to batch insert fingerprints: %w", err)
+	}
+
+	slog.Info("successfully saved all fingerprints", "song_id", songID, "count", rowsCopied, "total_fingerprints", len(fingerprints))
+	return nil
 }
