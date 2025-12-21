@@ -1,10 +1,24 @@
 package audio
 
+import "sort"
+
+const (
+	minFreqBin       = 26 // Ignore frequencies below ~250Hz (at 44.1kHz/4096)
+	maxPeaksPerFrame = 3  // Only keep strongest peaks per time frame
+)
+
 func FindPeaks(spec *Spectrogram, threshold float32, neighborhoodSize int) []Peak {
 	var peaks []Peak
 
 	for t := 0; t < len(spec.Data); t++ {
-		for f := neighborhoodSize; f < len(spec.Data[t])-neighborhoodSize; f++ {
+		var framePeaks []Peak
+
+		startF := neighborhoodSize
+		if minFreqBin > startF {
+			startF = minFreqBin
+		}
+
+		for f := startF; f < len(spec.Data[t])-neighborhoodSize; f++ {
 			magnitude := spec.Data[t][f]
 			if magnitude < threshold {
 				continue
@@ -30,13 +44,23 @@ func FindPeaks(spec *Spectrogram, threshold float32, neighborhoodSize int) []Pea
 			}
 
 			if isPeak {
-				peaks = append(peaks, Peak{
+				framePeaks = append(framePeaks, Peak{
 					TimeIndex: t,
 					FreqIndex: f,
 					Magnitude: magnitude,
 				})
 			}
 		}
+
+		// Keep only strongest peaks for this time frame
+		if len(framePeaks) > maxPeaksPerFrame {
+			sort.Slice(framePeaks, func(i, j int) bool {
+				return framePeaks[i].Magnitude > framePeaks[j].Magnitude
+			})
+			framePeaks = framePeaks[:maxPeaksPerFrame]
+		}
+
+		peaks = append(peaks, framePeaks...)
 	}
 
 	return peaks

@@ -28,7 +28,7 @@ func (s *svc) ProcessAudio(ctx context.Context, wavPath string) ([]Fingerprint, 
 	}
 
 	spec := ComputeSpectrogram(audio, DefaultWindowSize, DefaultHopSize)
-	peaks := FindPeaks(spec, -40.0, 2)
+	peaks := FindPeaks(spec, -30.0, 2)
 	fingerprints := GenerateFingerprints(peaks, spec, 50)
 
 	s.logger.Info("processed audio",

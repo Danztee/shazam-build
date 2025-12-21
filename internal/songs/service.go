@@ -201,17 +201,42 @@ func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavP
 		return nil
 	}
 
-	slog.Info("saving fingerprints", "song_id", songID, "count", len(fingerprints))
+	type fingerprintKey struct {
+		Hash         int64
+		TimeOffsetMs int32
+		SongID       int32
+	}
+	uniqueFingerprints := make(map[fingerprintKey]bool)
+	deduplicated := make([]audio.Fingerprint, 0, len(fingerprints))
+
+	for _, fp := range fingerprints {
+		key := fingerprintKey{
+			Hash:         fp.Hash,
+			TimeOffsetMs: int32(fp.AnchorTimeMs),
+			SongID:       songID,
+		}
+		if !uniqueFingerprints[key] {
+			uniqueFingerprints[key] = true
+			deduplicated = append(deduplicated, fp)
+		}
+	}
+
+	if len(deduplicated) == 0 {
+		slog.Warn("no unique fingerprints after deduplication", "song_id", songID)
+		return nil
+	}
+
+	slog.Info("saving fingerprints", "song_id", songID, "count", len(deduplicated), "original_count", len(fingerprints))
 
 	rowsCopied, err := s.db.CopyFrom(
 		ctx,
 		pgx.Identifier{"fingerprints"},
 		[]string{"hash", "song_id", "time_offset_ms"},
-		pgx.CopyFromSlice(len(fingerprints), func(i int) ([]any, error) {
+		pgx.CopyFromSlice(len(deduplicated), func(i int) ([]any, error) {
 			return []any{
-				fingerprints[i].Hash,
+				deduplicated[i].Hash,
 				songID,
-				int32(fingerprints[i].AnchorTimeMs),
+				int32(deduplicated[i].AnchorTimeMs),
 			}, nil
 		}),
 	)
@@ -219,6 +244,6 @@ func (s *svc) processAndSaveFingerprints(ctx context.Context, songID int32, wavP
 		return fmt.Errorf("failed to batch insert fingerprints: %w", err)
 	}
 
-	slog.Info("successfully saved all fingerprints", "song_id", songID, "count", rowsCopied, "total_fingerprints", len(fingerprints))
+	slog.Info("successfully saved all fingerprints", "song_id", songID, "count", rowsCopied, "total_fingerprints", len(deduplicated))
 	return nil
 }
