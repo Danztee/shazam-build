@@ -6,6 +6,7 @@ import (
 	"time"
 
 	repo "github.com/Danztee/shazam-build/internal/database/queries"
+	"github.com/Danztee/shazam-build/internal/download"
 	"github.com/Danztee/shazam-build/internal/json"
 	"github.com/Danztee/shazam-build/internal/songs"
 	"github.com/Danztee/shazam-build/internal/spotify"
@@ -30,7 +31,8 @@ func (app *application) mount() http.Handler {
 	})
 
 	spotifyService := spotify.NewService()
-	songsService := songs.NewService(repo.New(app.db), spotifyService)
+	downloadService := download.NewService(slog.Default())
+	songsService := songs.NewService(repo.New(app.db), spotifyService, downloadService)
 	songsHandler := songs.NewHandler(songsService)
 	r.Post("/songs", songsHandler.AddSong)
 

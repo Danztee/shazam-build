@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 
 	repo "github.com/Danztee/shazam-build/internal/database/queries"
+	"github.com/Danztee/shazam-build/internal/download"
 	"github.com/Danztee/shazam-build/internal/spotify"
 
 	"github.com/jackc/pgx/v5/pgtype"
@@ -19,12 +21,14 @@ type Service interface {
 type svc struct {
 	repo          repo.Querier
 	spotifyClient spotify.Service
+	downloadSvc   download.Service
 }
 
-func NewService(repo repo.Querier, spotifyClient spotify.Service) Service {
+func NewService(repo repo.Querier, spotifyClient spotify.Service, downloadSvc download.Service) Service {
 	return &svc{
 		repo:          repo,
 		spotifyClient: spotifyClient,
+		downloadSvc:   downloadSvc,
 	}
 }
 
@@ -41,7 +45,7 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 	}
 
 	if urlInfo.Type == "album" {
-		return s.addAlbumTracks(ctx, token, urlInfo.ID)
+		return s.addAlbumTracks(ctx, token, urlInfo.ID, payload.Download, payload.SavePath)
 	}
 
 	track, err := s.spotifyClient.GetTrack(ctx, token, urlInfo.ID)
@@ -54,10 +58,18 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 		return repo.Song{}, fmt.Errorf("failed to create song: %w", err)
 	}
 
+	// Download track if requested
+	if payload.Download && s.downloadSvc != nil {
+		if err := s.downloadSvc.DownloadTrack(ctx, track, payload.SavePath); err != nil {
+			slog.Warn("failed to download track", "error", err, "track", track.Name)
+			// Don't fail the whole operation if download fails
+		}
+	}
+
 	return song, nil
 }
 
-func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.Song, error) {
+func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string, download bool, savePath string) (repo.Song, error) {
 	tracks, _, err := s.spotifyClient.GetAlbumTracks(ctx, token, albumID)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("failed to get album tracks: %w", err)
@@ -74,6 +86,14 @@ func (s *svc) addAlbumTracks(ctx context.Context, token, albumID string) (repo.S
 			return repo.Song{}, fmt.Errorf("failed to create song %s: %w", track.Name, err)
 		}
 		lastSong = song
+	}
+
+	// Download tracks if requested
+	if download && s.downloadSvc != nil {
+		if _, err := s.downloadSvc.DownloadTracks(ctx, tracks, savePath); err != nil {
+			slog.Warn("failed to download some album tracks", "error", err)
+			// Don't fail the whole operation if download fails
+		}
 	}
 
 	return lastSong, nil
