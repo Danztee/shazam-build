@@ -8,13 +8,11 @@ import (
 func FFT(samples []float64) []complex128 {
 	n := len(samples)
 
-	// Ensure power of 2
 	nextPow2 := 1
 	for nextPow2 < n {
 		nextPow2 <<= 1
 	}
 
-	// Prepare mapping: complex(float, 0)
 	x := make([]complex128, nextPow2)
 	for i, s := range samples {
 		x[i] = complex(s, 0)
@@ -34,7 +32,6 @@ func FFT(samples []float64) []complex128 {
 		j += k
 	}
 
-	// Butterfly updates
 	for ip := 1; ip < nextPow2; ip <<= 1 { // ip is the size of the sub-problem
 		ang := -math.Pi / float64(ip)
 		wStep := cmplx.Exp(complex(0, ang))

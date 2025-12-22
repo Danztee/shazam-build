@@ -100,13 +100,13 @@ func (s *svc) AddSong(ctx context.Context, payload createSongPayload) (repo.Song
 }
 
 func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, error) {
-	// 1. Decode Base64 WebM
+	// Decode Base64 WebM
 	audioBytes, err := base64.StdEncoding.DecodeString(base64Audio)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("invalid base64 audio: %w", err)
 	}
 
-	// 2. Write to temp file
+	// Write to temp file
 	tmpDir := os.TempDir()
 	webmFile, err := os.CreateTemp(tmpDir, "upload-*.webm")
 	if err != nil {
@@ -119,7 +119,7 @@ func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, err
 	}
 	webmFile.Close() // Close so ffmpeg can read it
 
-	// 3. Convert to WAV using ffmpeg
+	// Convert to WAV using ffmpeg
 	wavPath := strings.TrimSuffix(webmFile.Name(), ".webm") + ".wav"
 	// ffmpeg -i input.webm -ac 1 -ar 44100 -f wav output.wav
 	cmd := exec.CommandContext(ctx, "ffmpeg", "-y", "-i", webmFile.Name(), "-ac", "1", "-ar", "44100", "-f", "wav", wavPath)
@@ -129,7 +129,7 @@ func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, err
 	}
 	defer os.Remove(wavPath)
 
-	// 4. Generate Fingerprints
+	// Generate Fingerprints
 	fingerprints, err := s.audioSvc.ProcessAudio(ctx, wavPath)
 	if err != nil {
 		return repo.Song{}, fmt.Errorf("fingerprinting failed: %w", err)
@@ -139,7 +139,7 @@ func (s *svc) MatchSong(ctx context.Context, base64Audio string) (repo.Song, err
 		return repo.Song{}, errors.New("no fingerprints generated from audio")
 	}
 
-	// 5. Query DB (Diagonal Matching)
+	// Query DB (Diagonal Matching)
 	// Map query hashes to their time offsets
 	queryHashes := make(map[int64][]int)
 	inputHashes := make([]int64, 0, len(fingerprints))

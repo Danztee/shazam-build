@@ -20,7 +20,7 @@ import (
 const DefaultSavePath = "./downloads"
 
 type Service interface {
-	DownloadTrack(ctx context.Context, track *spotify.Track, savePath string) (string, error) // Returns WAV path
+	DownloadTrack(ctx context.Context, track *spotify.Track, savePath string) (string, error)
 	DownloadTracks(ctx context.Context, tracks []*spotify.Track, savePath string) (int, error)
 }
 
