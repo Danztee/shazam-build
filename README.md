@@ -4,7 +4,7 @@
 
 This project recreates the core logic behind Shazam, as described in the original 2003 paper _"An Industrial-Strength Audio Search Algorithm" by Avery Li-Chun Wang_. It features a **Digital Signal Processing (DSP) pipeline**, a custom **PostgreSQL-based fingerprint database**, and a **React frontend** for real-time audio recognition.
 
-## 🎵 How It Works
+## How It Works
 
 This system does not use machine learning or external fingerprinting libraries. Instead, it relies on pure signal processing and probabilistic hashing:
 
@@ -13,7 +13,7 @@ This system does not use machine learning or external fingerprinting libraries. 
 3.  **Combinatorial Hashing:** Generates unique hashes by pairing "anchor" peaks with nearby "target" peaks and their time deltas. This makes the fingerprints valid even in noisy environments.
 4.  **Matching & Time Coherency:** Matches query fingerprints against the database and uses **diagonal alignment** (linearity search) to filter out false positives. If the time offsets of the matching hashes align, it's a match.
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 ### Backend
 
@@ -30,7 +30,7 @@ This system does not use machine learning or external fingerprinting libraries. 
 - **TailwindCSS v4**: Styling.
 - **MediaRecorder API**: Capturing microphone input in the browser.
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -85,7 +85,7 @@ make run
 - **Backend API:** `http://localhost:8080`
 - **Frontend:** `http://localhost:5173`
 
-## 📖 Usage
+## Usage
 
 ### Adding Songs (Ingestion)
 
@@ -111,7 +111,7 @@ _This will fetch the metadata, download the audio, process it through the DSP pi
 4.  Play a song in the background.
 5.  After a few seconds of recording, the app will send the audio clip to the backend and display the matched result.
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 ├── cmd/                # Entry points (API server)
@@ -128,10 +128,10 @@ _This will fetch the metadata, download the audio, process it through the DSP pi
 └── Makefile            # Command shortcuts
 ```
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
-## 👤 Author
+## Author
 
 [**Danztee**](https://x.com/iamdanztee)
